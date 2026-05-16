@@ -50,9 +50,70 @@ app.get("/users", async (req, res) => {
   }
 });
 
+app.get("/users/:id", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const user = await User.findOne({
+      where: { id: userId },
+    });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json({
+      message: "User fetched successfully",
+      user: user.toJSON(),
+    });
+  } catch (error) {
+    console.log("Error fetching user:", error);
+    res.status(404).json({ message: "User not found" });
+  }
+});
 
+app.put("/users/:id", async (req, res) => {
+  try {
+    const { name, email, age, isActive } = req.body;
+    const userId = req.params.id;
+    const [updated] = await User.update(
+      { name, email, age, isActive },
+      { where: { id: userId } },
+    );
+    if (!updated) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json({ message: "User updated successfully" });
+  } catch (error) {
+    console.log("Error updating user:", error);
+    res.status(400).json({ message: "Invalid request body" });
+  }
+});
 
+app.patch("/users/:id", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const [updated] = await User.update(req.body, { where: { id: userId } });
+    if (!updated) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json({ message: "User updated successfully" });
+  } catch (error) {
+    console.log("Error updating user:", error);
+    res.status(400).json({ message: "Invalid request body" });
+  }
+});
 
+app.delete("/users/:id", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    await User.destroy({ where: { id: userId } });
+    if (!deleted) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.log("Error deleting user:", error);
+    res.status(400).json({ message: "Invalid request body" });
+  }
+});
 
 app.listen(port, host, () => {
   console.log(`Server is running at ${host}:${port}`);
