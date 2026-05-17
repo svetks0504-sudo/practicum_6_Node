@@ -1,5 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
+import { User, Post, Comment } from "./models/index.js";
+import sequelize from "./config/db.js";
 
 dotenv.config();
 
@@ -11,14 +13,21 @@ app.use(express.json());
 
 app.post("/users", async (req, res) => {
   try {
-    const { name, email, age } = req.body;
+    const { username, email, age, password } = req.body;
     const user = await User.create({
-      name,
+      username,
       email,
       age,
+      password,
     });
-    console.log("User created:", user);
-    res.status(201).json({ message: "User created successfully", user });
+
+    const userData = user.toJSON();
+    delete userData.password;
+
+    res.status(201).json({
+      message: "User created successfully",
+      user: userData,
+    });
   } catch (error) {
     console.error("Error creating user:", error);
     res.status(400).json({ message: "Invalid request body" });
@@ -36,8 +45,11 @@ app.get("/users", async (req, res) => {
     }
     const users = await User.findAll({
       where,
-      limit: limit ? Number(limit) : undefined,
-      offset: offset ? Number(offset) : undefined,
+      limit: limit ? Number(limit) : 10,
+      offset: offset ? Number(offset) : 0,
+      attributes: {
+        exclude: ["password"],
+      },
     });
 
     res.status(200).json({
@@ -55,6 +67,9 @@ app.get("/users/:id", async (req, res) => {
     const userId = req.params.id;
     const user = await User.findOne({
       where: { id: userId },
+      attributes: {
+        exclude: ["password"],
+      },
     });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -69,12 +84,38 @@ app.get("/users/:id", async (req, res) => {
   }
 });
 
+app.get("/users/:id/posts", async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const posts = await Post.findAll({
+      where: { userId },
+      include: [
+        {
+          model: Comment,
+          attributes: ["id", "content"],
+        },
+      ],
+    });
+    if (posts.length === 0) {
+      return res.status(404).json({ message: "Posts not found" });
+    }
+    res.status(200).json({
+      message: "Posts fetched successfully",
+      posts: posts.map((post) => post.toJSON()),
+    });
+  } catch (error) {
+    console.log("Error fetching posts:", error);
+    res.status(404).json({ message: "Posts not found" });
+  }
+});
+
 app.put("/users/:id", async (req, res) => {
   try {
-    const { name, email, age, isActive } = req.body;
+    const { username, email, age, isActive } = req.body;
     const userId = req.params.id;
     const [updated] = await User.update(
-      { name, email, age, isActive },
+      { username, email, age, isActive },
       { where: { id: userId } },
     );
     if (!updated) {
@@ -104,7 +145,13 @@ app.patch("/users/:id", async (req, res) => {
 app.delete("/users/:id", async (req, res) => {
   try {
     const userId = req.params.id;
-    await User.destroy({ where: { id: userId } });
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const deleted = await User.destroy({ where: { id: userId } });
     if (!deleted) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -112,6 +159,82 @@ app.delete("/users/:id", async (req, res) => {
   } catch (error) {
     console.log("Error deleting user:", error);
     res.status(400).json({ message: "Invalid request body" });
+  }
+});
+
+app.post("/posts", async (req, res) => {
+  try {
+    const { title, content, userId } = req.body;
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const post = await Post.create({
+      title,
+      content,
+      userId,
+    });
+    res.status(201).json({ message: "Post created successfully", post });
+  } catch (error) {
+    console.log("Error creating post:", error);
+    res.status(400).json({ message: "Invalid request body" });
+  }
+});
+
+app.get("/posts", async (req, res) => {
+  try {
+    const posts = await Post.findAll({
+      include: [
+        {
+          model: User,
+          attributes: ["id", "username"],
+        },
+      ],
+    });
+    if (posts.length === 0) {
+      return res.status(404).json({ message: "Posts not found" });
+    }
+    res.status(200).json({ message: "Posts fetched successfully", posts });
+  } catch (error) {
+    console.log("Error fetching posts:", error);
+    res.status(500).json({ message: "Error fetching posts" });
+  }
+});
+
+app.get("/posts/:id", async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const post = await Post.findOne({
+      where: { id: postId },
+      include: [
+        {
+          model: User,
+          attributes: ["id", "username"],
+        },
+        {
+          model: Comment,
+          attributes: ["id", "content"],
+          include: [
+            {
+              model: User,
+              attributes: ["id", "username"],
+            },
+          ],
+        },
+      ],
+    });
+    if (!post) {
+      console.log("Post not found with id:", postId);
+      return res.status(404).json({ message: "Post not found" });
+    }
+    res.status(200).json({
+      message: "Post fetched successfully",
+      post: post.toJSON(),
+    });
+  } catch (error) {
+    console.log("Error fetching post:", error);
+    res.status(404).json({ message: "Post not found" });
   }
 });
 

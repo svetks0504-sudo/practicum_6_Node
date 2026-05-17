@@ -7,7 +7,7 @@ const User = sequelize.define("User", {
     primaryKey: true,
     autoIncrement: true,
   },
-  name: {
+  username: {
     type: DataTypes.STRING,
     allowNull: false,
   },
@@ -30,10 +30,13 @@ const User = sequelize.define("User", {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
-  createdAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
+    password: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
   },
+  {
+    timestamps: true,
 });
 
 export default User;
