@@ -10,13 +10,17 @@ const User = sequelize.define("User", {
   username: {
     type: DataTypes.STRING,
     allowNull: false,
+    unique: true,
+    validate: {
+      len: {args: [2, 50], msg: "Username must be 2-50 characters"}
+    }
   },
   email: {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true,
     validate: {
-      isEmail: true,
+      isEmail: {msg: "Invalid email format"},
     },
   },
   age: {
@@ -33,6 +37,9 @@ const User = sequelize.define("User", {
     password: {
       type: DataTypes.STRING,
       allowNull: false,
+      validate: {
+        len: {args: [6, 100], msg: "Password must be at least 6 character"}
+      }
     },
   },
   {

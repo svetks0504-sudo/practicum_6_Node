@@ -12,6 +12,9 @@ const Comment = sequelize.define(
     content: {
       type: DataTypes.TEXT,
       allowNull: false,
+      validate: {
+        notEmpty: {msg: "Comment hcannot be empty"}
+      }
     },
     userId: {
       type: DataTypes.INTEGER,

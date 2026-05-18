@@ -12,6 +12,10 @@ const Post = sequelize.define(
     title: {
       type: DataTypes.STRING,
       allowNull: false,
+      validate: {
+        notEmpty: true,
+        len: {args: [4, 200], msg: "Title must be 4-200 characters"},
+      }
     },
     content: {
       type: DataTypes.TEXT,
@@ -20,6 +24,10 @@ const Post = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
+      /*references: {
+        model: "User",
+        key: "id"
+      }*/
     },
     published: {
       type: DataTypes.BOOLEAN,
