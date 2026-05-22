@@ -5,6 +5,8 @@ import sequelize from "./config/db.js";
 /*import "./config/sync.js";*/
 import bcrypt from "bcrypt";
 import cors from "cors";
+import authorization from "./middlewares/auth.js";
+import jwt from "jsonwebtoken";
 
 dotenv.config();
 
@@ -24,36 +26,29 @@ app.get("/", (req, res) => {
   res.send("Server works 🚀");
 });
 
-app.post("/users", async (req, res) => {
+app.post("/register", async (req, res) => {
   try {
-    const { username, email, age, password } = req.body;
-
-    if (!password) {
-      return res.status(400).json({ message: "Password required" });
-    }
+    const { username, email, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       username,
       email,
-      age,
-      password: await bcrypt.hash(password, 10),
+      password: hashedPassword,
     });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    const userData = user.toJSON();
-    delete userData.password;
-
-    res.status(201).json({
-      message: "User created successfully",
-      user: userData,
-    });
+    res
+      .status(201)
+      .json({ success: true, data: { id: user.id, email, username } });
   } catch (error) {
     if (error.name === "SequelizeUniqueConstraintError") {
-      return res
-        .status(409)
-        .json({ message: "Username or email already exists" });
+      return res.status(409).json({ error: "Username or email already exist" });
+    } else {
+      res.status(500).json({ success: false, error: error.message });
     }
-    console.error("Error creating user:", error);
-    res.status(400).json({ message: "Invalid request body" });
   }
 });
 
@@ -82,6 +77,36 @@ app.get("/users", async (req, res) => {
   } catch (error) {
     console.error("Error fetching users:", error);
     res.status(500).json({ message: "Error fetching users" });
+  }
+});
+
+app.post("/login", async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    const user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid credentailes" });
+    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentailes" });
+    }
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+
+    res
+      .status(201)
+      .json({ success: true, message: "Successfull loggen in", token });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -181,18 +206,21 @@ app.delete("/users/:id", async (req, res) => {
   }
 });
 
-app.post("/posts", async (req, res) => {
+app.post("/posts", authorization, async (req, res) => {
   try {
-    const { title, content, userId } = req.body;
-    const user = await User.findByPk(userId);
+    const { title, content, published } = req.body;
+    const { id: userId } = req.user;
+
+    /* const user = await User.findByPk(userId);
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
-    }
+    }*/
     const post = await Post.create({
       title,
       content,
       userId,
+      published,
     });
     res.status(201).json({ message: "Post created successfully", data: post });
   } catch (error) {
@@ -210,7 +238,7 @@ app.get("/posts", async (req, res) => {
       include: [{ model: User, attributes: ["id", "username"] }],
       limit: limit ? parseInt(limit) : 5,
       offset: offset ? parseInt(offset) : 0,
-      order: [["createdAt", "DESC"]],
+      order: [[Post,"createdAt", "DESC"]],
     });
     if (posts.rows.length === 0) {
       return res.status(404).json({ message: "Posts not found" });
@@ -287,7 +315,7 @@ app.delete("/posts/:id", async (req, res) => {
       return res.status(404).json({ message: "Post not found", success: true });
     }
     await post.destroy();
-    res.status(200).json({ message: "Post deleted successfully" });
+    res.status(200).json({ message: "Post deleted successfully", success: false });
   } catch (error) {
     console.log("Error deleting post:", error);
     res.status(400).json({ message: "Invalid request body" });
@@ -303,7 +331,7 @@ app.post("/posts/:postId/comments", async (req, res) => {
       return res.status(404).json({ message: "Post not found" });
     }
     const user = await User.findByPk(userId);
-    if (!post) {
+    if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
     const comment = await Comment.create({
@@ -345,7 +373,6 @@ app.get("/stats", async (request, response) => {
     response.status(500).json({ error: error.message });
   }
 });
-
 
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
