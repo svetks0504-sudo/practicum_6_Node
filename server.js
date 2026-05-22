@@ -1,10 +1,10 @@
-import express from "express";
+import express, { request } from "express";
 import dotenv from "dotenv";
 import { User, Post, Comment } from "./models/index.js";
 import sequelize from "./config/db.js";
 /*import "./config/sync.js";*/
 import bcrypt from "bcrypt";
-import cors from "cors"
+import cors from "cors";
 
 dotenv.config();
 
@@ -12,7 +12,6 @@ const app = express();
 
 const host = process.env.HOST || "127.0.0.1";
 const port = process.env.PORT || 3333;
-
 
 app.use(cors());
 app.use(express.json());
@@ -110,7 +109,7 @@ app.get("/users/:id", async (req, res) => {
 
 app.get("/users/:id/posts", async (req, res) => {
   try {
-    const userId = req.params.id;
+    const userId = Number(req.params.id);
 
     const posts = await Post.findAll({
       where: { userId },
@@ -118,6 +117,7 @@ app.get("/users/:id/posts", async (req, res) => {
         {
           model: Comment,
           attributes: ["id", "content"],
+          include: [{ model: User, attributes: ["id", "username"] }],
         },
       ],
     });
@@ -130,7 +130,7 @@ app.get("/users/:id/posts", async (req, res) => {
     });
   } catch (error) {
     console.log("Error fetching posts:", error);
-    res.status(404).json({ message: "Posts not found" });
+    res.status(500).json({ message: "Error:", error });
   }
 });
 
@@ -203,18 +203,26 @@ app.post("/posts", async (req, res) => {
 
 app.get("/posts", async (req, res) => {
   try {
-    const posts = await Post.findAll({
-      include: [
-        {
-          model: User,
-          attributes: ["id", "username"],
-        },
-      ],
+    const { limit, offset } = req.query;
+
+    const posts = await Post.findAndCountAll({
+      where: { published: 1 },
+      include: [{ model: User, attributes: ["id", "username"] }],
+      limit: limit ? parseInt(limit) : 5,
+      offset: offset ? parseInt(offset) : 0,
+      order: [["createdAt", "DESC"]],
     });
-    if (posts.length === 0) {
+    if (posts.rows.length === 0) {
       return res.status(404).json({ message: "Posts not found" });
     }
-    res.status(200).json({ message: "Posts fetched successfully", posts });
+    res.status(200).json({
+      message: "Posts fetched successfully",
+      success: true,
+      total: posts.count,
+      limit: limit ? parseInt(limit) : 5,
+      offset: offset ? parseInt(offset) : 0,
+      data: posts.rows,
+    });
   } catch (error) {
     console.log("Error fetching posts:", error);
     res.status(500).json({ message: "Error fetching posts" });
@@ -223,49 +231,47 @@ app.get("/posts", async (req, res) => {
 
 app.get("/posts/:id", async (req, res) => {
   try {
-    const postId = req.params.id;
-    const post = await Post.findOne({
-      where: { id: postId },
+    const postId = parseInt(req.params.id);
+    const post = await Post.findByPk(postId, {
       include: [
-        {
-          model: User,
-          attributes: ["id", "username"],
-        },
+        { model: User, attributes: ["id", "username"] },
         {
           model: Comment,
-          attributes: ["id", "content"],
-          include: [
-            {
-              model: User,
-              attributes: ["id", "username"],
-            },
-          ],
+          include: [{ model: User, attributes: ["id", "username"] }],
+          order: [["createdAt", "ASC"]],
         },
       ],
     });
+
     if (!post) {
       console.log("Post not found with id:", postId);
       return res.status(404).json({ message: "Post not found" });
     }
+
+    await post.increment("views"); //для увеличения views
+
     res.status(200).json({
       message: "Post fetched successfully",
       post: post.toJSON(),
     });
   } catch (error) {
     console.log("Error fetching post:", error);
-    res.status(404).json({ message: "Post not found" });
+    res.status(500).json({ error: error.message });
   }
 });
 
 app.put("/posts/:id", async (req, res) => {
   try {
-    const postId = req.params.id;
-    const [updated] = await Post.update(req.body, {
-      where: { id: postId },
-    });
-    if (!updated || updated === 0) {
+    const postId = parseInt(req.params.id);
+    const { title, content, published } = req.body;
+
+    const post = await Post.findByPk(postId);
+
+    if (!post) {
       return res.status(404).json({ message: "Post not found" });
     }
+
+    await post.update({ title, content, published });
     res.status(200).json({ message: "Post updated successfully" });
   } catch (error) {
     console.log("Error updating post:", error);
@@ -275,11 +281,12 @@ app.put("/posts/:id", async (req, res) => {
 
 app.delete("/posts/:id", async (req, res) => {
   try {
-    const postId = req.params.id;
-    const post = await Post.destroy({ where: { id: postId } });
-    if (!post || post === 0) {
-      return res.status(404).json({ message: "Post not found" });
+    const postId = parseInt(req.params.id);
+    const post = await Post.findByPk(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found", success: true });
     }
+    await post.destroy();
     res.status(200).json({ message: "Post deleted successfully" });
   } catch (error) {
     console.log("Error deleting post:", error);
@@ -289,13 +296,18 @@ app.delete("/posts/:id", async (req, res) => {
 
 app.post("/posts/:postId/comments", async (req, res) => {
   try {
-    const postId = req.params.postId;
-    const { content } = req.body;
+    const postId = Number(req.params.postId);
+    const { content, userId } = req.body;
     const post = await Post.findByPk(postId);
     if (!post) {
       return res.status(404).json({ message: "Post not found" });
     }
+    const user = await User.findByPk(userId);
+    if (!post) {
+      return res.status(404).json({ message: "User not found" });
+    }
     const comment = await Comment.create({
+      userId,
       postId,
       content,
     });
@@ -308,6 +320,36 @@ app.post("/posts/:postId/comments", async (req, res) => {
     res.status(400).json({ message: "Invalid request body" });
   }
 });
+
+app.get("/stats", async (request, response) => {
+  try {
+    const totalPosts = await Post.count();
+    const publishedPosts = await Post.count({ where: { published: 1 } });
+    const totalComments = await Comment.count();
+    const topPosts = await Post.findAll({
+      attributes: ["id", "title", "views"],
+      order: [["views", "DESC"]],
+      limit: 5,
+    });
+    response.json({
+      success: true,
+      data: {
+        totalPosts,
+        publishedPosts,
+        draftPosts: totalPosts - publishedPosts,
+        totalComments,
+        topPostsByViews: topPosts,
+      },
+    });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
+});
+
+
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+}); //последний без next
 
 async function startServer() {
   try {

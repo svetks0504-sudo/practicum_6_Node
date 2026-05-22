@@ -24,10 +24,6 @@ const Post = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      /*references: {
-        model: "User",
-        key: "id"
-      }*/
     },
     published: {
       type: DataTypes.BOOLEAN,

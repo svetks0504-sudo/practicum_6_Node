@@ -11,9 +11,9 @@ const User = sequelize.define("User", {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true,
-    validate: {
+    /*validate: {
       len: {args: [2, 50], msg: "Username must be 2-50 characters"}
-    }
+    }*/
   },
   email: {
     type: DataTypes.STRING,
